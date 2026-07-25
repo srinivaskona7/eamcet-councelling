@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AP EAPCET 2025 Cutoff Explorer</title>
+<meta name="description" content="AP EAPCET 2025 engineering college cutoff (last rank) explorer. Filter by region, college type, caste category and branch to shortlist colleges for counseling." />
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="assets/css/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="brand-mark">AP</span>
+        <div>
+          <h1>AP EAPCET 2025 Cutoff Explorer</h1>
+          <p class="subtitle">Official Last Rank Details &middot; Engineering / Pharmacy Counseling Helper</p>
+        </div>
+      </div>
+      <div id="dataStatus" class="data-status">Loading dataset&hellip;</div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="filters-panel" aria-label="Filters">
+      <h2>Find your colleges</h2>
+
+      <div class="field">
+        <label for="categorySelect">Caste / Reservation Category</label>
+        <select id="categorySelect"></select>
+      </div>
+
+      <div class="field">
+        <label>Gender</label>
+        <div class="segmented" id="genderToggle">
+          <button type="button" data-gender="B" class="active">Boys</button>
+          <button type="button" data-gender="G">Girls</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="regionSelect">Zone / Region</label>
+        <select id="regionSelect"></select>
+      </div>
+
+      <div class="field">
+        <label for="districtSelect">District</label>
+        <select id="districtSelect"></select>
+      </div>
+
+      <div class="field">
+        <label for="typeSelect">College Ownership</label>
+        <select id="typeSelect"></select>
+      </div>
+
+      <div class="field">
+        <label for="branchSearch">Branches <span class="hint">(select one or more &mdash; each gets its own ranked list)</span></label>
+        <input id="branchSearch" type="text" placeholder="Search branch e.g. CSE, ECE, Pharmacy..." autocomplete="off" />
+        <div id="branchList" class="branch-checklist" role="listbox" aria-multiselectable="true"></div>
+        <div class="branch-actions">
+          <button type="button" id="clearBranches" class="link-btn">Clear</button>
+          <span id="branchCount" class="hint">0 selected</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="maxRank">Max acceptable rank <span class="hint">(optional)</span></label>
+        <input id="maxRank" type="number" min="1" placeholder="e.g. 50000" />
+      </div>
+
+      <button id="searchBtn" class="primary-btn">Search Colleges</button>
+      <p id="filterError" class="error-text" hidden></p>
+    </section>
+
+    <section class="results-panel" aria-label="Results">
+      <div id="emptyState" class="empty-state">
+        <p>Select a caste category and at least one branch, then click <strong>Search Colleges</strong>.</p>
+        <p class="hint">Results are sorted from the <strong>best (lowest) cutoff rank</strong> to the least competitive, per branch.</p>
+      </div>
+      <div id="resultsContainer"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Data source: AP EAPCET 2025 official Last Rank Details (Government of Andhra Pradesh). Built for counseling reference only &mdash; always verify against the official portal before finalizing choices.</p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
