@@ -45,3 +45,7 @@ Then open `http://localhost:8000`.
 - Parsed deterministically from the official PDF using a fixed-width column parser (positional alignment per page-header block) to correctly preserve blank cutoff cells (`null` = no admission occurred in that category that year) instead of guessing values.
 - Some deemed/private universities (ownership type `PU`) publish **separate rank lists per zone** (AU zone vs. SVU zone) for the same branch — these appear as distinct rows differentiated by the `region`/`localArea` fields, not a data error.
 - This tool is for counseling reference only. Always cross-check against the official AP EAPCET portal before finalizing your choices.
+
+## Single source of truth
+
+`data/cutoffs.json` is self-documenting: besides all 1609 rows, its `meta` block carries the full row schema, every code→label mapping (category/type/region/district/branch), the extraction methodology, and data caveats. Any tool or AI can load this one file to fully understand or reconstruct the dataset — no other document is needed.
