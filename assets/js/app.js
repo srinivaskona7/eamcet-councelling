@@ -14,15 +14,17 @@
     WG: "West Godavari",
   };
 
-  const OWNERSHIP_GROUPS = {
-    ALL: { label: "All Colleges", types: null },
-    PRIVATE: { label: "Private Colleges", types: ["PVT", "SF", "SS"] },
-    UNIVERSITY: { label: "Universities", types: ["UNIV", "PU"] },
+  const TYPE_LABELS = {
+    PVT: "Private", SF: "Self-Financed", SS: "Self-Supporting",
+    UNIV: "University", PU: "Private University",
   };
 
   const state = {
     data: null,
     selectedBranches: new Set(),
+    selectedRegions: new Set(),
+    selectedDistricts: new Set(),
+    selectedTypes: new Set(),
     gender: "B",
   };
 
@@ -49,15 +51,12 @@
     const meta = state.data.meta;
 
     const categorySelect = el("categorySelect");
-    const seenCategoryGroup = new Set();
     const baseCategories = [
       ["OC", "OC"], ["SC1", "SC"], ["SC2", "SC-II"], ["SC3", "SC-III"], ["ST", "ST"],
       ["BCA", "BC-A"], ["BCB", "BC-B"], ["BCC", "BC-C"], ["BCD", "BC-D"], ["BCE", "BC-E"],
       ["EWS", "OC-EWS"],
     ];
     baseCategories.forEach(([key, label]) => {
-      if (seenCategoryGroup.has(key)) return;
-      seenCategoryGroup.add(key);
       const opt = document.createElement("option");
       opt.value = key;
       opt.textContent = label;
@@ -65,18 +64,9 @@
     });
     categorySelect.value = "OC";
 
-    const regionSelect = el("regionSelect");
-    regionSelect.appendChild(makeOption("ALL", "All Zones"));
-    meta.regions.forEach((r) => regionSelect.appendChild(makeOption(r, REGION_LABELS[r] || r)));
-
-    const districtSelect = el("districtSelect");
-    districtSelect.appendChild(makeOption("ALL", "All Districts"));
-    meta.districts.forEach((d) => districtSelect.appendChild(makeOption(d, DISTRICT_LABELS[d] || d)));
-
-    const typeSelect = el("typeSelect");
-    Object.entries(OWNERSHIP_GROUPS).forEach(([key, group]) => {
-      typeSelect.appendChild(makeOption(key, group.label));
-    });
+    renderChipGroup("regionChips", meta.regions, REGION_LABELS, state.selectedRegions);
+    renderChipGroup("districtChips", meta.districts, DISTRICT_LABELS, state.selectedDistricts);
+    renderChipGroup("typeChips", meta.types, TYPE_LABELS, state.selectedTypes);
 
     renderBranchList(meta.branches, meta.branch_labels);
 
@@ -85,6 +75,27 @@
       if (!btn) return;
       state.gender = btn.dataset.gender;
       [...el("genderToggle").children].forEach((b) => b.classList.toggle("active", b === btn));
+    });
+
+    document.querySelectorAll(".chip-actions").forEach((group) => {
+      group.addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-chipgroup]");
+        if (!btn) return;
+        const groupName = btn.dataset.chipgroup;
+        const action = btn.dataset.action;
+        const setRef = groupName === "region" ? state.selectedRegions : state.selectedDistricts;
+        const containerId = groupName === "region" ? "regionChips" : "districtChips";
+        const chips = el(containerId).querySelectorAll(".chip");
+        if (action === "all") {
+          chips.forEach((c) => {
+            setRef.add(c.dataset.value);
+            c.classList.add("active");
+          });
+        } else {
+          setRef.clear();
+          chips.forEach((c) => c.classList.remove("active"));
+        }
+      });
     });
 
     el("branchSearch").addEventListener("input", (e) => {
@@ -98,13 +109,30 @@
     });
 
     el("searchBtn").addEventListener("click", runSearch);
+    el("resetBtn").addEventListener("click", resetAllFilters);
   }
 
-  function makeOption(value, text) {
-    const o = document.createElement("option");
-    o.value = value;
-    o.textContent = text;
-    return o;
+  function renderChipGroup(containerId, values, labels, selectedSet) {
+    const container = el(containerId);
+    container.innerHTML = "";
+    values.forEach((value) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip";
+      chip.dataset.value = value;
+      const label = labels[value] || value;
+      chip.innerHTML = `${escapeHtml(value)} <span class="chip-sub">${escapeHtml(label)}</span>`;
+      chip.addEventListener("click", () => {
+        if (selectedSet.has(value)) {
+          selectedSet.delete(value);
+          chip.classList.remove("active");
+        } else {
+          selectedSet.add(value);
+          chip.classList.add("active");
+        }
+      });
+      container.appendChild(chip);
+    });
   }
 
   function renderBranchList(branches, labels) {
@@ -148,6 +176,27 @@
     el("branchCount").textContent = `${state.selectedBranches.size} selected`;
   }
 
+  function resetAllFilters() {
+    state.selectedBranches.clear();
+    state.selectedRegions.clear();
+    state.selectedDistricts.clear();
+    state.selectedTypes.clear();
+    state.gender = "B";
+
+    el("categorySelect").value = "OC";
+    [...el("genderToggle").children].forEach((b) => b.classList.toggle("active", b.dataset.gender === "B"));
+    document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+    [...el("branchList").querySelectorAll("input[type=checkbox]")].forEach((c) => (c.checked = false));
+    el("branchSearch").value = "";
+    filterBranchList("");
+    updateBranchCount();
+    el("maxRank").value = "";
+    el("filterError").hidden = true;
+
+    el("resultsContainer").innerHTML = "";
+    el("emptyState").style.display = "";
+  }
+
   function runSearch() {
     const errorEl = el("filterError");
     errorEl.hidden = true;
@@ -160,13 +209,12 @@
 
     const category = el("categorySelect").value;
     const categoryKey = `${category}_${state.gender}`;
-    const region = el("regionSelect").value;
-    const district = el("districtSelect").value;
-    const ownership = el("typeSelect").value;
+    const regions = state.selectedRegions;
+    const districts = state.selectedDistricts;
+    const types = state.selectedTypes;
     const maxRankRaw = el("maxRank").value.trim();
     const maxRank = maxRankRaw ? parseInt(maxRankRaw, 10) : null;
 
-    const allowedTypes = OWNERSHIP_GROUPS[ownership].types;
     const rows = state.data.rows;
 
     el("emptyState").style.display = "none";
@@ -177,18 +225,20 @@
     branchOrder.forEach((branchCode) => {
       const filtered = rows.filter((r) => {
         if (r.branch !== branchCode) return false;
-        if (region !== "ALL" && r.region !== region) return false;
-        if (district !== "ALL" && r.district !== district) return false;
-        if (allowedTypes && !allowedTypes.includes(r.type)) return false;
+        if (regions.size > 0 && !regions.has(r.region)) return false;
+        if (districts.size > 0 && !districts.has(r.district)) return false;
+        if (types.size > 0 && !types.has(r.type)) return false;
         return true;
       });
 
       const ranked = filtered
         .filter((r) => typeof r[categoryKey] === "number")
         .filter((r) => (maxRank ? r[categoryKey] <= maxRank : true))
-        .sort((a, b) => a[categoryKey] - b[categoryKey]);
+        .sort((a, b) => a[categoryKey] - b[categoryKey] || a.instName.localeCompare(b.instName));
 
-      const unranked = filtered.filter((r) => typeof r[categoryKey] !== "number");
+      const unranked = filtered
+        .filter((r) => typeof r[categoryKey] !== "number")
+        .sort((a, b) => a.instName.localeCompare(b.instName));
 
       container.appendChild(
         renderBranchSection(branchCode, category, state.gender, ranked, unranked, categoryKey)
@@ -241,12 +291,14 @@
       const toggle = document.createElement("div");
       toggle.className = "unranked-toggle";
       toggle.textContent = `Show ${unranked.length} college(s) with no allotment recorded in this category ▾`;
-      const list = document.createElement("div");
+      const list = document.createElement("ul");
       list.className = "unranked-list";
       list.hidden = true;
-      list.innerHTML = unranked
-        .map((r) => `${escapeHtml(r.instName)} (${r.instCode}, ${r.district})`)
-        .join(", ");
+      unranked.forEach((r) => {
+        const li = document.createElement("li");
+        li.innerHTML = `<span class="code-cell">${escapeHtml(r.instCode)}</span> ${escapeHtml(r.instName)} &middot; ${escapeHtml(DISTRICT_LABELS[r.district] || r.district)}`;
+        list.appendChild(li);
+      });
       toggle.addEventListener("click", () => {
         list.hidden = !list.hidden;
       });
@@ -268,6 +320,7 @@
       <thead>
         <tr>
           <th>#</th>
+          <th>College Code</th>
           <th>College</th>
           <th>Type</th>
           <th>District / Zone</th>
@@ -278,13 +331,16 @@
     `;
     const tbody = table.querySelector("tbody");
     ranked.forEach((r, idx) => {
+      const rank = idx + 1;
       const tr = document.createElement("tr");
+      if (rank === 1) tr.classList.add("top-pick");
       tr.innerHTML = `
-        <td>${idx + 1}</td>
-        <td>${escapeHtml(r.instName)} <span class="hint">(${r.instCode})</span></td>
+        <td><span class="rank-badge${rank === 1 ? " medal" : ""}">${rank}</span></td>
+        <td class="code-cell">${escapeHtml(r.instCode)}</td>
+        <td>${escapeHtml(r.instName)}</td>
         <td><span class="type-pill">${r.type}</span></td>
         <td>${escapeHtml(DISTRICT_LABELS[r.district] || r.district)} &middot; ${r.region}</td>
-        <td class="rank-cell"><span class="rank-badge">${idx + 1}</span>${r[categoryKey]}</td>
+        <td class="rank-cell">${r[categoryKey]}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -296,7 +352,7 @@
       alert("Image export library failed to load. Check your internet connection and retry.");
       return;
     }
-    html2canvas(node, { backgroundColor: "#ffffff", scale: 2 }).then((canvas) => {
+    html2canvas(node, { backgroundColor: "#fffcf5", scale: 2 }).then((canvas) => {
       const mime = format === "jpeg" ? "image/jpeg" : "image/png";
       const ext = format === "jpeg" ? "jpg" : "png";
       const url = canvas.toDataURL(mime, 0.95);
