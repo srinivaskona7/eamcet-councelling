@@ -41,6 +41,10 @@
       status.textContent = `${json.meta.row_count} branch-cutoff records · ${json.meta.college_count} colleges loaded`;
       status.classList.remove("loading");
       status.classList.add("ready");
+      const prov = el("dataProvenance");
+      if (prov) {
+        prov.textContent = `Dataset v${json.meta.version} · ${json.meta.row_count} records across ${json.meta.college_count} colleges. ${json.meta.methodology || ""}`;
+      }
       initFilters();
     } catch (err) {
       status.textContent = "Failed to load dataset: " + err.message;
@@ -114,7 +118,10 @@
 
     el("clearBranches").addEventListener("click", () => {
       state.selectedBranches.clear();
-      [...el("branchList").querySelectorAll("input[type=checkbox]")].forEach((c) => (c.checked = false));
+      el("branchList").querySelectorAll(".branch-chip.active").forEach((c) => {
+        c.classList.remove("active");
+        c.setAttribute("aria-selected", "false");
+      });
       updateBranchCount();
       updateBranchModeVisibility();
     });
@@ -126,21 +133,7 @@
     el("searchBtn").addEventListener("click", runSearch);
     el("resetBtn").addEventListener("click", resetAllFilters);
 
-    el("filterToggleMobile").addEventListener("click", openFilterDrawer);
-    el("filterClose").addEventListener("click", closeFilterDrawer);
-    el("filterOverlay").addEventListener("click", closeFilterDrawer);
-
     if (restoreFromUrl()) runSearch();
-  }
-
-  function openFilterDrawer() {
-    el("filtersPanel").classList.add("open");
-    el("filterOverlay").hidden = false;
-  }
-
-  function closeFilterDrawer() {
-    el("filtersPanel").classList.remove("open");
-    el("filterOverlay").hidden = true;
   }
 
   function renderChipGroup(containerId, values, labels, selectedSet) {
@@ -169,43 +162,74 @@
   function renderBranchList(branches, labels) {
     const container = el("branchList");
     container.innerHTML = "";
+    const branchCounts = {};
+    state.data.rows.forEach((r) => {
+      branchCounts[r.branch] = (branchCounts[r.branch] || 0) + 1;
+    });
     branches.forEach((code) => {
-      const row = document.createElement("label");
-      row.className = "branch-item";
-      row.dataset.branch = code;
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.value = code;
-      cb.addEventListener("change", () => {
-        if (cb.checked) state.selectedBranches.add(code);
-        else state.selectedBranches.delete(code);
+      const label = labels[code] || "";
+      const count = branchCounts[code] || 0;
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "chip branch-chip";
+      chip.dataset.branch = code;
+      chip.dataset.search = `${code} ${label}`.toLowerCase();
+      chip.title = label ? `${code} — ${label} · ${count} record${count === 1 ? "" : "s"}` : code;
+      chip.setAttribute("role", "option");
+      chip.setAttribute("aria-selected", "false");
+      chip.textContent = code;
+      chip.addEventListener("click", () => {
+        if (state.selectedBranches.has(code)) {
+          state.selectedBranches.delete(code);
+          chip.classList.remove("active");
+          chip.setAttribute("aria-selected", "false");
+        } else {
+          state.selectedBranches.add(code);
+          chip.classList.add("active");
+          chip.setAttribute("aria-selected", "true");
+        }
         updateBranchCount();
         updateBranchModeVisibility();
       });
-      const codeSpan = document.createElement("span");
-      codeSpan.className = "code";
-      codeSpan.textContent = code;
-      const labelSpan = document.createElement("span");
-      labelSpan.className = "label";
-      labelSpan.textContent = labels[code] || "";
-      row.appendChild(cb);
-      row.appendChild(codeSpan);
-      row.appendChild(labelSpan);
-      container.appendChild(row);
+      container.appendChild(chip);
     });
     updateBranchCount();
   }
 
   function filterBranchList(term) {
-    const items = el("branchList").querySelectorAll(".branch-item");
+    const items = el("branchList").querySelectorAll(".branch-chip");
     items.forEach((item) => {
-      const text = item.textContent.toLowerCase();
+      const text = item.dataset.search || "";
       item.style.display = !term || text.includes(term) ? "" : "none";
+    });
+  }
+
+  function renderSelectedBranchChips() {
+    const wrap = el("selectedBranchChips");
+    const codes = [...state.selectedBranches].sort();
+    wrap.innerHTML = "";
+    wrap.hidden = codes.length === 0;
+    codes.forEach((code) => {
+      const chip = document.createElement("span");
+      chip.className = "selected-chip";
+      chip.innerHTML = `${escapeHtml(code)} <button type="button" aria-label="Remove ${escapeHtml(code)}">&times;</button>`;
+      chip.querySelector("button").addEventListener("click", () => {
+        state.selectedBranches.delete(code);
+        const branchChip = el("branchList").querySelector(`.branch-chip[data-branch="${code}"]`);
+        if (branchChip) {
+          branchChip.classList.remove("active");
+          branchChip.setAttribute("aria-selected", "false");
+        }
+        updateBranchCount();
+        updateBranchModeVisibility();
+      });
+      wrap.appendChild(chip);
     });
   }
 
   function updateBranchCount() {
     el("branchCount").textContent = `${state.selectedBranches.size} selected`;
+    renderSelectedBranchChips();
   }
 
   function updateBranchModeVisibility() {
@@ -244,7 +268,7 @@
     [...el("genderToggle").children].forEach((b) => b.classList.toggle("active", b.dataset.gender === "B"));
     [...el("branchModeToggle").children].forEach((b) => b.classList.toggle("active", b.dataset.mode === "separate"));
     document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
-    [...el("branchList").querySelectorAll("input[type=checkbox]")].forEach((c) => (c.checked = false));
+    el("branchList").querySelectorAll(".branch-chip").forEach((c) => c.setAttribute("aria-selected", "false"));
     el("branchSearch").value = "";
     filterBranchList("");
     updateBranchCount();
@@ -334,22 +358,9 @@
     renderJumpNav(useCombined ? [] : sectionMetas);
     announceResults(totalRanked, branchOrder.length, useCombined);
 
-    if (window.matchMedia("(max-width: 900px)").matches) closeFilterDrawer();
-  }
-
-  function renderSuggestions(suggestions, categoryKey, label) {
-    const wrap = document.createElement("div");
-    wrap.className = "reach-block";
-    wrap.innerHTML = `<div class="reach-heading">Next best options beyond your rank &middot; ${escapeHtml(label)}</div>`;
-    const list = document.createElement("ul");
-    list.className = "reach-list";
-    suggestions.forEach((r, idx) => {
-      const li = document.createElement("li");
-      li.innerHTML = `<span class="rank-badge">${idx + 1}</span> <span class="code-cell">${escapeHtml(r.instCode)}</span> ${escapeHtml(r.instName)}${womenBadge(r.instName)} &middot; ${escapeHtml(DISTRICT_LABELS[r.district] || r.district)} &middot; <span class="rank-cell">${r[categoryKey]}</span>`;
-      list.appendChild(li);
+    [...container.children].forEach((section, idx) => {
+      section.style.animationDelay = `${idx * 70}ms`;
     });
-    wrap.appendChild(list);
-    return wrap;
   }
 
   function renderBranchSection(branchCode, category, gender, ranked, unranked, suggestions, categoryKey) {
@@ -379,7 +390,7 @@
 
     const metaEl = header.querySelector(".meta");
     function renderMeta(count) {
-      metaEl.textContent = `Category: ${categoryLabel} · ${count} ranked result${count === 1 ? "" : "s"}${unranked.length ? ` · ${unranked.length} with no allotment record` : ""}`;
+      metaEl.textContent = `Category: ${categoryLabel} · ${count} ranked result${count === 1 ? "" : "s"}${suggestions.length ? ` · ${suggestions.length} more within reach beyond your rank` : ""}${unranked.length ? ` · ${unranked.length} with no allotment record` : ""}`;
     }
 
     const snapshotWrap = document.createElement("div");
@@ -390,20 +401,16 @@
     title.textContent = `AP EAPCET 2025 – ${branchCode} (${branchLabel}) – ${categoryLabel} – Best to Least Cutoff`;
     snapshotWrap.appendChild(title);
 
-    if (ranked.length === 0) {
+    if (ranked.length === 0 && suggestions.length === 0) {
       const empty = document.createElement("div");
       empty.className = "no-results";
       empty.textContent = "No colleges match these filters for this category/branch.";
       snapshotWrap.appendChild(empty);
     } else {
-      snapshotWrap.appendChild(buildTable(ranked, categoryKey, { onRowCountChange: renderMeta }));
+      snapshotWrap.appendChild(buildTable(ranked, categoryKey, { onRowCountChange: renderMeta, reachRows: suggestions }));
     }
 
     section.appendChild(snapshotWrap);
-
-    if (suggestions.length > 0) {
-      section.appendChild(renderSuggestions(suggestions, categoryKey, branchLabel));
-    }
 
     if (unranked.length > 0) {
       const toggle = document.createElement("div");
@@ -414,7 +421,7 @@
       list.hidden = true;
       unranked.forEach((r) => {
         const li = document.createElement("li");
-        li.innerHTML = `<span class="code-cell">${escapeHtml(r.instCode)}</span> ${escapeHtml(r.instName)}${womenBadge(r.instName)} &middot; ${escapeHtml(DISTRICT_LABELS[r.district] || r.district)}`;
+        li.innerHTML = `<span class="code-cell">${escapeHtml(r.instCode)}</span> ${escapeHtml(r.instName)}${womenBadge(r.instName)} &middot; ${escapeHtml(DISTRICT_LABELS[r.district] || r.district)} &middot; ${escapeHtml(r.region)}`;
         list.appendChild(li);
       });
       toggle.addEventListener("click", () => {
@@ -465,7 +472,7 @@
 
     const metaEl = header.querySelectorAll(".meta")[1] || header.querySelector(".meta");
     function renderMeta(count) {
-      metaEl.textContent = `Category: ${categoryLabel} · ${count} ranked result${count === 1 ? "" : "s"}${unranked.length ? ` · ${unranked.length} with no allotment record` : ""}`;
+      metaEl.textContent = `Category: ${categoryLabel} · ${count} ranked result${count === 1 ? "" : "s"}${suggestions.length ? ` · ${suggestions.length} more within reach beyond your rank` : ""}${unranked.length ? ` · ${unranked.length} with no allotment record` : ""}`;
     }
 
     const snapshotWrap = document.createElement("div");
@@ -475,19 +482,15 @@
     title.textContent = `AP EAPCET 2025 – Combined (${branchCodes.join(", ")}) – ${categoryLabel} – Best to Least Cutoff`;
     snapshotWrap.appendChild(title);
 
-    if (ranked.length === 0) {
+    if (ranked.length === 0 && suggestions.length === 0) {
       const empty = document.createElement("div");
       empty.className = "no-results";
       empty.textContent = "No colleges match these filters across the selected branches.";
       snapshotWrap.appendChild(empty);
     } else {
-      snapshotWrap.appendChild(buildTable(ranked, categoryKey, { showBranch: true, onRowCountChange: renderMeta }));
+      snapshotWrap.appendChild(buildTable(ranked, categoryKey, { showBranch: true, onRowCountChange: renderMeta, reachRows: suggestions }));
     }
     section.appendChild(snapshotWrap);
-
-    if (suggestions.length > 0) {
-      section.appendChild(renderSuggestions(suggestions, categoryKey, "Combined"));
-    }
 
     if (unranked.length > 0) {
       const toggle = document.createElement("div");
@@ -498,7 +501,7 @@
       list.hidden = true;
       unranked.forEach((r) => {
         const li = document.createElement("li");
-        li.innerHTML = `<span class="code-cell">${escapeHtml(r.instCode)}</span> ${escapeHtml(r.instName)}${womenBadge(r.instName)} &middot; ${escapeHtml(DISTRICT_LABELS[r.district] || r.district)} &middot; ${escapeHtml(r.branch)}`;
+        li.innerHTML = `<span class="code-cell">${escapeHtml(r.instCode)}</span> ${escapeHtml(r.instName)}${womenBadge(r.instName)} &middot; ${escapeHtml(DISTRICT_LABELS[r.district] || r.district)} &middot; ${escapeHtml(r.region)} &middot; ${escapeHtml(r.branch)}`;
         list.appendChild(li);
       });
       toggle.addEventListener("click", () => {
@@ -524,6 +527,7 @@
   function buildTable(ranked, categoryKey, options) {
     options = options || {};
     const showBranch = !!options.showBranch;
+    const reachRows = options.reachRows || [];
     const branchLabels = state.data.meta.branch_labels;
 
     const table = document.createElement("table");
@@ -560,9 +564,10 @@
         const isCanonical = currentKey === "rank" && currentDir === "asc";
         const tr = document.createElement("tr");
         if (isCanonical && rowRank === 1) tr.classList.add("top-pick");
+        const medalClass = !isCanonical ? "" : rowRank === 1 ? " medal" : rowRank === 2 ? " medal-silver" : rowRank === 3 ? " medal-bronze" : "";
         tr.innerHTML = `
           <td class="delete-col"><button type="button" class="row-delete-btn" title="Remove this college from the list">&times;</button></td>
-          <td><span class="rank-badge${isCanonical && rowRank === 1 ? " medal" : ""}">${rowRank}</span></td>
+          <td><span class="rank-badge${medalClass}">${rowRank}</span></td>
           <td class="code-cell">${escapeHtml(r.instCode)}</td>
           <td>${escapeHtml(r.instName)}${womenBadge(r.instName)}</td>
           ${showBranch ? `<td><span class="type-pill">${escapeHtml(r.branch)} &middot; ${escapeHtml(branchLabels[r.branch] || "")}</span></td>` : ""}
@@ -576,6 +581,22 @@
           render();
           refreshSummaryBar();
         });
+        tbody.appendChild(tr);
+      });
+      reachRows.forEach((r, idx) => {
+        const rowRank = rows.length + idx + 1;
+        const tr = document.createElement("tr");
+        tr.classList.add("reach-row");
+        tr.innerHTML = `
+          <td class="delete-col"></td>
+          <td><span class="rank-badge reach">${rowRank}</span></td>
+          <td class="code-cell">${escapeHtml(r.instCode)}</td>
+          <td>${escapeHtml(r.instName)}${womenBadge(r.instName)} <span class="reach-badge" title="Beyond your max rank — some seats can still open via spot admissions or slippage">Reach</span></td>
+          ${showBranch ? `<td><span class="type-pill">${escapeHtml(r.branch)} &middot; ${escapeHtml(branchLabels[r.branch] || "")}</span></td>` : ""}
+          <td><span class="type-pill">${r.type}</span></td>
+          <td>${escapeHtml(DISTRICT_LABELS[r.district] || r.district)} &middot; ${r.region}</td>
+          <td class="rank-cell">${r[categoryKey]}</td>
+        `;
         tbody.appendChild(tr);
       });
       table.querySelectorAll("th.sortable").forEach((th) => {
@@ -652,9 +673,10 @@
 
     const branches = (params.get("branches") || "").split(",").filter(Boolean);
     branches.forEach((code) => {
-      const cb = el("branchList").querySelector(`input[value="${code}"]`);
-      if (cb) {
-        cb.checked = true;
+      const chip = el("branchList").querySelector(`.branch-chip[data-branch="${code}"]`);
+      if (chip) {
+        chip.classList.add("active");
+        chip.setAttribute("aria-selected", "true");
         state.selectedBranches.add(code);
       }
     });
