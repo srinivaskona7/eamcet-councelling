@@ -369,12 +369,18 @@
         <div class="meta">Category: ${escapeHtml(categoryLabel)} &middot; ${ranked.length} ranked result${ranked.length === 1 ? "" : "s"}${unranked.length ? ` · ${unranked.length} with no allotment record` : ""}</div>
       </div>
       <div class="branch-result-actions">
+        <button class="download-btn edit-toggle-btn" type="button">Edit List</button>
         <button class="download-btn" data-format="png">Download PNG</button>
         <button class="download-btn" data-format="jpeg">Download JPEG</button>
         <button class="download-btn copy-link-btn" type="button">Copy Share Link</button>
       </div>
     `;
     section.appendChild(header);
+
+    const metaEl = header.querySelector(".meta");
+    function renderMeta(count) {
+      metaEl.textContent = `Category: ${categoryLabel} · ${count} ranked result${count === 1 ? "" : "s"}${unranked.length ? ` · ${unranked.length} with no allotment record` : ""}`;
+    }
 
     const snapshotWrap = document.createElement("div");
     snapshotWrap.className = "snapshot-wrap table-scroll";
@@ -390,7 +396,7 @@
       empty.textContent = "No colleges match these filters for this category/branch.";
       snapshotWrap.appendChild(empty);
     } else {
-      snapshotWrap.appendChild(buildTable(ranked, categoryKey));
+      snapshotWrap.appendChild(buildTable(ranked, categoryKey, { onRowCountChange: renderMeta }));
     }
 
     section.appendChild(snapshotWrap);
@@ -422,6 +428,11 @@
       btn.addEventListener("click", () => downloadSnapshot(snapshotWrap, branchCode, category, gender, btn.dataset.format));
     });
     header.querySelector(".copy-link-btn").addEventListener("click", (e) => copyShareLink(e.currentTarget));
+    header.querySelector(".edit-toggle-btn").addEventListener("click", (e) => {
+      const active = section.classList.toggle("edit-active");
+      e.currentTarget.textContent = active ? "Done Editing" : "Edit List";
+      e.currentTarget.classList.toggle("active-edit", active);
+    });
 
     return section;
   }
@@ -444,12 +455,18 @@
         <div class="meta">Category: ${escapeHtml(categoryLabel)} &middot; ${ranked.length} ranked result${ranked.length === 1 ? "" : "s"}${unranked.length ? ` · ${unranked.length} with no allotment record` : ""}</div>
       </div>
       <div class="branch-result-actions">
+        <button class="download-btn edit-toggle-btn" type="button">Edit List</button>
         <button class="download-btn" data-format="png">Download PNG</button>
         <button class="download-btn" data-format="jpeg">Download JPEG</button>
         <button class="download-btn copy-link-btn" type="button">Copy Share Link</button>
       </div>
     `;
     section.appendChild(header);
+
+    const metaEl = header.querySelectorAll(".meta")[1] || header.querySelector(".meta");
+    function renderMeta(count) {
+      metaEl.textContent = `Category: ${categoryLabel} · ${count} ranked result${count === 1 ? "" : "s"}${unranked.length ? ` · ${unranked.length} with no allotment record` : ""}`;
+    }
 
     const snapshotWrap = document.createElement("div");
     snapshotWrap.className = "snapshot-wrap table-scroll";
@@ -464,7 +481,7 @@
       empty.textContent = "No colleges match these filters across the selected branches.";
       snapshotWrap.appendChild(empty);
     } else {
-      snapshotWrap.appendChild(buildTable(ranked, categoryKey, { showBranch: true }));
+      snapshotWrap.appendChild(buildTable(ranked, categoryKey, { showBranch: true, onRowCountChange: renderMeta }));
     }
     section.appendChild(snapshotWrap);
 
@@ -495,6 +512,11 @@
       btn.addEventListener("click", () => downloadSnapshot(snapshotWrap, "combined", category, gender, btn.dataset.format));
     });
     header.querySelector(".copy-link-btn").addEventListener("click", (e) => copyShareLink(e.currentTarget));
+    header.querySelector(".edit-toggle-btn").addEventListener("click", (e) => {
+      const active = section.classList.toggle("edit-active");
+      e.currentTarget.textContent = active ? "Done Editing" : "Edit List";
+      e.currentTarget.classList.toggle("active-edit", active);
+    });
 
     return section;
   }
@@ -520,6 +542,7 @@
       table.innerHTML = `
         <thead>
           <tr>
+            <th class="delete-col"></th>
             <th>#</th>
             <th>College Code</th>
             <th class="sortable" data-sort="college">College${sortArrow("college")}</th>
@@ -538,6 +561,7 @@
         const tr = document.createElement("tr");
         if (isCanonical && rowRank === 1) tr.classList.add("top-pick");
         tr.innerHTML = `
+          <td class="delete-col"><button type="button" class="row-delete-btn" title="Remove this college from the list">&times;</button></td>
           <td><span class="rank-badge${isCanonical && rowRank === 1 ? " medal" : ""}">${rowRank}</span></td>
           <td class="code-cell">${escapeHtml(r.instCode)}</td>
           <td>${escapeHtml(r.instName)}${womenBadge(r.instName)}</td>
@@ -546,6 +570,12 @@
           <td>${escapeHtml(DISTRICT_LABELS[r.district] || r.district)} &middot; ${r.region}</td>
           <td class="rank-cell">${r[categoryKey]}</td>
         `;
+        tr.querySelector(".row-delete-btn").addEventListener("click", () => {
+          const pos = rows.indexOf(r);
+          if (pos > -1) rows.splice(pos, 1);
+          render();
+          refreshSummaryBar();
+        });
         tbody.appendChild(tr);
       });
       table.querySelectorAll("th.sortable").forEach((th) => {
@@ -566,6 +596,7 @@
           render();
         });
       });
+      if (options.onRowCountChange) options.onRowCountChange(rows.length);
     }
 
     render();
@@ -577,7 +608,9 @@
       alert("Image export library failed to load. Check your internet connection and retry.");
       return;
     }
+    node.classList.add("export-mode");
     html2canvas(node, { backgroundColor: "#fffcf5", scale: 2 }).then((canvas) => {
+      node.classList.remove("export-mode");
       const mime = format === "jpeg" ? "image/jpeg" : "image/png";
       const ext = format === "jpeg" ? "jpg" : "png";
       const url = canvas.toDataURL(mime, 0.95);
@@ -585,6 +618,8 @@
       link.href = url;
       link.download = `apeapcet2025_${branchCode}_${category}${gender}.${ext}`;
       link.click();
+    }).catch(() => {
+      node.classList.remove("export-mode");
     });
   }
 
@@ -675,6 +710,16 @@
       <span class="summary-pill"><strong>${totalRanked}</strong> ranked result${totalRanked === 1 ? "" : "s"} found</span>
       ${bestOverall != null ? `<span class="summary-pill">Best overall cutoff rank: <strong>${bestOverall}</strong></span>` : ""}
     `;
+  }
+
+  function refreshSummaryBar() {
+    const rankCells = el("resultsContainer").querySelectorAll(".rank-cell");
+    let best = null;
+    rankCells.forEach((td) => {
+      const value = parseInt(td.textContent, 10);
+      if (!isNaN(value)) best = best == null ? value : Math.min(best, value);
+    });
+    renderSummaryBar(rankCells.length, best);
   }
 
   function renderJumpNav(sectionMetas) {
