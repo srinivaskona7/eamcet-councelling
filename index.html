@@ -2,37 +2,53 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#0b2036" />
 <title>AP EAPCET 2025 Cutoff Explorer</title>
 <meta name="description" content="AP EAPCET 2025 engineering college cutoff (last rank) explorer. Tick regions, districts, ownership and caste category, select branches, and get colleges ranked best cutoff to least for counseling." />
-<link rel="icon" href="data:,">
+<link rel="icon" type="image/svg+xml" href="assets/img/logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/style.css" />
 </head>
 <body>
+  <div id="filterOverlay" class="filter-overlay" hidden></div>
+
   <header class="site-header">
     <div class="header-inner">
       <div class="brand">
-        <span class="brand-seal">AP</span>
+        <img src="assets/img/logo.svg" alt="AP EAPCET Explorer seal" class="brand-seal" width="44" height="44" />
         <div>
           <p class="eyebrow">Official Data &middot; Last Rank Details</p>
           <h1>AP EAPCET 2025 Cutoff Explorer</h1>
           <p class="subtitle">Engineering &amp; Pharmacy Counseling Helper</p>
         </div>
       </div>
-      <div id="dataStatus" class="data-status">Loading dataset&hellip;</div>
+      <div id="dataStatus" class="data-status loading">Loading dataset&hellip;</div>
     </div>
   </header>
 
   <main class="layout">
-    <section class="filters-panel" aria-label="Filters">
-      <h2>Find your colleges</h2>
+    <section class="filters-panel" id="filtersPanel" aria-label="Filters">
+      <div class="filters-panel-head">
+        <h2>Find your colleges</h2>
+        <button type="button" id="filterClose" class="filter-close-btn" aria-label="Close filters">&times;</button>
+      </div>
+
+      <div class="button-row">
+        <button id="searchBtn" class="primary-btn">Search Colleges</button>
+        <button id="resetBtn" type="button" class="ghost-btn">Reset All Filters</button>
+      </div>
+      <p id="filterError" class="error-text" hidden></p>
 
       <div class="field">
         <label for="categorySelect">Caste / Reservation Category</label>
         <select id="categorySelect"></select>
+        <details class="info-details">
+          <summary>What do these categories mean?</summary>
+          <p><strong>OC</strong> &mdash; Open Category, no reservation. <strong>BC-A/B/C/D/E</strong> &mdash; Backward Classes, five sub-groups reserved for socially &amp; educationally backward communities as classified by the AP BC Commission. <strong>SC</strong> &mdash; Scheduled Castes (the source rank list also publishes SC-II / SC-III columns). <strong>ST</strong> &mdash; Scheduled Tribes. <strong>OC-EWS</strong> &mdash; Economically Weaker Sections quota within Open Category, under the EWS reservation. Each category has a separate cutoff (last rank allotted) for Boys and Girls, since a share of every category's seats is reserved for women.</p>
+        </details>
       </div>
 
       <div class="field">
@@ -41,6 +57,10 @@
           <button type="button" data-gender="B" class="active">Boys</button>
           <button type="button" data-gender="G">Girls</button>
         </div>
+        <details class="info-details">
+          <summary>Why does this change which colleges appear?</summary>
+          <p>Colleges with &ldquo;for Women&rdquo; in their name admit girls only and have no Boys cutoff at all &mdash; choosing <strong>Boys</strong> hides them completely. Choosing <strong>Girls</strong> considers every college, both co-ed and women-only, since girls are eligible at either.</p>
+        </details>
       </div>
 
       <div class="field">
@@ -52,6 +72,10 @@
           </div>
         </div>
         <div id="regionChips" class="chip-group"></div>
+        <details class="info-details">
+          <summary>What are AU / SVU / Statewide zones?</summary>
+          <p>Andhra Pradesh counseling groups colleges into local-area zones: <strong>AU Zone</strong> (Andhra University area &mdash; the North Coastal &amp; Godavari/Krishna belt) and <strong>SVU Zone</strong> (Sri Venkateswara University area &mdash; Rayalaseema &amp; southern coastal districts) each reserve a share of seats for candidates local to that zone. <strong>Statewide</strong> covers deemed/private universities that counsel across the whole state rather than by local zone &mdash; some of these publish a separate rank list per zone for the very same branch, which is why you may see the same college twice.</p>
+        </details>
       </div>
 
       <div class="field">
@@ -70,10 +94,14 @@
           <label>College Ownership <span class="hint">(tick one or more)</span></label>
         </div>
         <div id="typeChips" class="chip-group"></div>
+        <details class="info-details">
+          <summary>What do Private / Self-Finance / University mean?</summary>
+          <p><strong>PVT</strong> &mdash; Private (unaided) college on the state counseling quota. <strong>SF</strong> &mdash; Self-Finance college, privately funded and fee-based. <strong>SS</strong> &mdash; Self-Supporting constituent college of a state university. <strong>UNIV</strong> &mdash; University college run directly by a state university. <strong>PU</strong> &mdash; Private University, a UGC-recognised private university running its own EAPCET-linked counseling, sometimes zone-wise.</p>
+        </details>
       </div>
 
       <div class="field">
-        <label for="branchSearch">Branches <span class="hint">(select one or more &mdash; each gets its own ranked list)</span></label>
+        <label for="branchSearch">Branches <span class="hint">(select one or more)</span></label>
         <input id="branchSearch" type="text" placeholder="Search branch e.g. CSE, ECE, Pharmacy..." autocomplete="off" />
         <div id="branchList" class="branch-checklist" role="listbox" aria-multiselectable="true"></div>
         <div class="branch-actions">
@@ -82,19 +110,24 @@
         </div>
       </div>
 
-      <div class="field">
-        <label for="maxRank">Max acceptable rank <span class="hint">(optional)</span></label>
-        <input id="maxRank" type="number" min="1" placeholder="Leave blank to see every college, best cutoff first" />
+      <div class="field" id="branchModeField" hidden>
+        <label>Multiple branches selected <span class="hint">(choose how to show results)</span></label>
+        <div class="segmented" id="branchModeToggle">
+          <button type="button" data-mode="separate" class="active">Separate lists</button>
+          <button type="button" data-mode="combined">Combined list</button>
+        </div>
       </div>
 
-      <div class="button-row">
-        <button id="searchBtn" class="primary-btn">Search Colleges</button>
-        <button id="resetBtn" type="button" class="ghost-btn">Reset All Filters</button>
+      <div class="field">
+        <label for="maxRank">Max acceptable rank <span class="hint">(optional)</span></label>
+        <input id="maxRank" type="number" min="1" inputmode="numeric" placeholder="Leave blank to see every college, best cutoff first" />
+        <p class="hint">If set, we'll also suggest the next 5 closest colleges just beyond your rank.</p>
       </div>
-      <p id="filterError" class="error-text" hidden></p>
     </section>
 
     <section class="results-panel" aria-label="Results">
+      <div id="summaryBar" class="summary-bar" hidden></div>
+      <div id="jumpNav" class="jump-nav" hidden></div>
       <div id="emptyState" class="empty-state">
         <p>Select a caste category and at least one branch, then click <strong>Search Colleges</strong>.</p>
         <p class="hint">Results are sorted from the <strong>best (lowest) cutoff rank</strong> to the least competitive, per branch. Leave &ldquo;Max acceptable rank&rdquo; blank to see every matching college in order.</p>
@@ -106,6 +139,9 @@
   <footer class="site-footer">
     <p>Data source: AP EAPCET 2025 official Last Rank Details (Government of Andhra Pradesh). Built for counseling reference only &mdash; always verify against the official portal before finalizing choices.</p>
   </footer>
+
+  <div id="srAnnounce" class="sr-only" role="status" aria-live="polite"></div>
+  <button type="button" id="filterToggleMobile" class="filter-toggle-btn">&#9776; Filters</button>
 
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="assets/js/app.js"></script>
