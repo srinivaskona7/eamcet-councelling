@@ -548,6 +548,7 @@
 
     el("searchBtn").addEventListener("click", runSearch);
     el("resetBtn").addEventListener("click", resetAllFilters);
+    el("freshStartBtn").addEventListener("click", startFresh);
 
     if (restoreFromUrl()) {
       runSearch();
@@ -602,8 +603,6 @@
     if (saved.maxRank) el("maxRank").value = saved.maxRank;
     if (saved.resultLimit) el("resultLimit").value = saved.resultLimit;
     (saved.removed || []).forEach((key) => state.removedKeys.add(key));
-
-    if (saved.branches.length) runSearch();
   }
 
   function renderChipGroup(containerId, values, labels, selectedSet) {
@@ -787,6 +786,12 @@
     el("jumpNav").hidden = true;
     el("srAnnounce").textContent = "";
     history.replaceState(null, "", location.pathname);
+    localStorage.removeItem(FILTERS_KEY);
+  }
+
+  function startFresh() {
+    localStorage.removeItem(FILTERS_KEY);
+    location.href = location.pathname;
   }
 
   function runSearch() {
