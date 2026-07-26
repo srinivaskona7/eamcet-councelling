@@ -35,6 +35,14 @@
   </header>
 
   <main class="layout">
+    <section class="college-lookup-panel" aria-label="College lookup">
+      <label for="collegeLookupInput">Know the college already? Search by code or name</label>
+      <div class="college-lookup-row">
+        <input id="collegeLookupInput" type="text" placeholder="e.g. JNTUA or Jawaharlal Nehru..." autocomplete="off" aria-expanded="false" aria-controls="collegeLookupSuggestions" role="combobox" />
+        <div id="collegeLookupSuggestions" class="college-lookup-suggestions" hidden role="listbox"></div>
+      </div>
+    </section>
+
     <section class="filters-panel" id="filtersPanel" aria-label="Filters">
       <div class="filters-panel-head">
         <h2>Find your colleges</h2>

@@ -54,7 +54,6 @@
     if (!state.lastSearchParams) return;
     const { category, maxRankRaw, limitRaw } = state.lastSearchParams;
     updateUrlState(category, maxRankRaw, limitRaw);
-    saveFiltersToStorage(category, maxRankRaw, limitRaw);
   }
 
   function loadShortlist() {
@@ -88,36 +87,6 @@
     const next = current === "dark" ? "light" : "dark";
     localStorage.setItem(THEME_KEY, next);
     applyStoredTheme();
-  }
-
-  const FILTERS_KEY = "apeapcet2025_last_filters";
-
-  function saveFiltersToStorage(category, maxRankRaw, resultLimit) {
-    try {
-      localStorage.setItem(FILTERS_KEY, JSON.stringify({
-        branches: [...state.selectedBranches],
-        regions: [...state.selectedRegions],
-        districts: [...state.selectedDistricts],
-        types: [...state.selectedTypes],
-        category,
-        gender: state.gender,
-        mode: state.branchMode,
-        maxRank: maxRankRaw || "",
-        resultLimit: resultLimit || "25",
-        removed: [...state.removedKeys],
-      }));
-    } catch (err) {
-      console.warn("Could not save filters", err);
-    }
-  }
-
-  function loadFiltersFromStorage() {
-    try {
-      const raw = localStorage.getItem(FILTERS_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch (err) {
-      return null;
-    }
   }
 
   // ---------- Shortlist (My Colleges) ----------
@@ -296,6 +265,154 @@
     document.body.classList.add("modal-open");
   }
 
+  // ---------- College quick lookup (search by code or name) ----------
+
+  const CATEGORY_ORDER = ["OC", "SC1", "SC2", "SC3", "ST", "BCA", "BCB", "BCC", "BCD", "BCE", "EWS"];
+
+  function findCollegeMatches(query) {
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) return [];
+    const seen = new Set();
+    const matches = [];
+    for (const r of state.data.rows) {
+      if (seen.has(r.instCode)) continue;
+      if (r.instCode.toLowerCase().includes(q) || r.instName.toLowerCase().includes(q)) {
+        seen.add(r.instCode);
+        matches.push(r);
+        if (matches.length >= 20) break;
+      }
+    }
+    return matches.sort((a, b) => a.instName.localeCompare(b.instName));
+  }
+
+  function openCollegeLookupResult(instCode) {
+    const meta = state.data.meta;
+    const rows = state.data.rows.filter((r) => r.instCode === instCode);
+    if (!rows.length) return;
+    const first = rows[0];
+    const modal = el("collegeModal");
+    const body = el("collegeModalBody");
+    const branches = rows.slice().sort((a, b) => a.branch.localeCompare(b.branch));
+
+    const branchBlocks = branches.map((r) => {
+      let filled = 0;
+      const catRows = CATEGORY_ORDER.map((cat) => {
+        const bKey = `${cat}_B`;
+        const gKey = `${cat}_G`;
+        const bVal = r[bKey];
+        const gVal = r[gKey];
+        if (typeof bVal === "number") filled++;
+        if (typeof gVal === "number") filled++;
+        const label = meta.category_labels[bKey] ? meta.category_labels[bKey].replace(" (Boys)", "") : cat;
+        return `
+          <tr>
+            <td>${escapeHtml(label)}</td>
+            <td class="${typeof bVal === "number" ? "rank-cell" : "no-admit-cell"}">${typeof bVal === "number" ? bVal : "&mdash;"}</td>
+            <td class="${typeof gVal === "number" ? "rank-cell" : "no-admit-cell"}">${typeof gVal === "number" ? gVal : "&mdash;"}</td>
+          </tr>
+        `;
+      }).join("");
+      return `
+        <div class="lookup-branch-block">
+          <h4><span class="type-pill">${escapeHtml(r.branch)}</span> ${escapeHtml(meta.branch_labels[r.branch] || "")}</h4>
+          <div class="hint">${escapeHtml(zoneDisplay(r))} &middot; ${filled} of 22 category/gender combinations have a recorded cutoff</div>
+          <table class="results-table profile-table">
+            <thead><tr><th>Category</th><th>Boys</th><th>Girls</th></tr></thead>
+            <tbody>${catRows}</tbody>
+          </table>
+        </div>
+      `;
+    }).join("");
+
+    body.innerHTML = `
+      <h3>${escapeHtml(first.instCode)} &mdash; ${escapeHtml(first.instName)}${womenBadge(first.instName)}</h3>
+      <div class="hint">${escapeHtml(DISTRICT_LABELS[first.district] || first.district)} &middot; ${TYPE_LABELS[first.type] || first.type} &middot; ${branches.length} branch${branches.length === 1 ? "" : "es"} in dataset</div>
+      <p class="hint" style="margin-top:8px;">Cutoff rank for every branch &amp; caste category at this college. &ldquo;&mdash;&rdquo; means that reservation category had zero seats filled in the 2025 counseling round for this college, not missing data.</p>
+      ${branchBlocks}
+    `;
+    modal.hidden = false;
+    document.body.classList.add("modal-open");
+  }
+
+  function initCollegeLookup() {
+    const input = el("collegeLookupInput");
+    const suggestions = el("collegeLookupSuggestions");
+    let activeIndex = -1;
+    let currentMatches = [];
+
+    function closeSuggestions() {
+      suggestions.hidden = true;
+      suggestions.innerHTML = "";
+      input.setAttribute("aria-expanded", "false");
+      activeIndex = -1;
+      currentMatches = [];
+    }
+
+    function renderSuggestions(matches) {
+      currentMatches = matches;
+      activeIndex = -1;
+      if (!matches.length) {
+        suggestions.innerHTML = `<div class="college-lookup-empty">No colleges match yet &mdash; try the code or a few more letters of the name.</div>`;
+        suggestions.hidden = false;
+        input.setAttribute("aria-expanded", "true");
+        return;
+      }
+      suggestions.innerHTML = matches.map((r, idx) => `
+        <button type="button" class="college-lookup-suggestion" role="option" data-idx="${idx}">
+          <span class="code-cell">${escapeHtml(r.instCode)}</span>${escapeHtml(r.instName)}${womenBadge(r.instName)}
+          <span class="hint">${escapeHtml(DISTRICT_LABELS[r.district] || r.district)} &middot; ${escapeHtml(TYPE_LABELS[r.type] || r.type)}</span>
+        </button>
+      `).join("");
+      suggestions.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+      suggestions.querySelectorAll(".college-lookup-suggestion").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const r = currentMatches[Number(btn.dataset.idx)];
+          openCollegeLookupResult(r.instCode);
+          input.value = `${r.instCode} — ${r.instName}`;
+          closeSuggestions();
+        });
+      });
+    }
+
+    input.addEventListener("input", () => {
+      const matches = findCollegeMatches(input.value);
+      if (!input.value.trim()) {
+        closeSuggestions();
+        return;
+      }
+      renderSuggestions(matches);
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (suggestions.hidden) return;
+      const items = [...suggestions.querySelectorAll(".college-lookup-suggestion")];
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        activeIndex = Math.min(activeIndex + 1, items.length - 1);
+        items.forEach((it, i) => it.classList.toggle("active", i === activeIndex));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        activeIndex = Math.max(activeIndex - 1, 0);
+        items.forEach((it, i) => it.classList.toggle("active", i === activeIndex));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (activeIndex >= 0 && currentMatches[activeIndex]) {
+          const r = currentMatches[activeIndex];
+          openCollegeLookupResult(r.instCode);
+          input.value = `${r.instCode} — ${r.instName}`;
+          closeSuggestions();
+        }
+      } else if (e.key === "Escape") {
+        closeSuggestions();
+      }
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".college-lookup-row")) closeSuggestions();
+    });
+  }
+
   // ---------- Compare mode ----------
 
   function toggleCompare(r, categoryKey, meta) {
@@ -447,6 +564,7 @@
       }
       renderDataTrustPanel();
       initFilters();
+      initCollegeLookup();
     } catch (err) {
       status.textContent = "Failed to load dataset: " + err.message;
       status.classList.remove("loading");
@@ -552,57 +670,7 @@
 
     if (restoreFromUrl()) {
       runSearch();
-    } else {
-      restoreFromStorage();
     }
-  }
-
-  function restoreFromStorage() {
-    const saved = loadFiltersFromStorage();
-    if (!saved) return;
-
-    saved.branches.forEach((code) => {
-      const chip = el("branchList").querySelector(`.branch-chip[data-branch="${code}"]`);
-      if (chip) {
-        chip.classList.add("active");
-        chip.setAttribute("aria-selected", "true");
-        state.selectedBranches.add(code);
-      }
-    });
-    updateBranchCount();
-    updateBranchModeVisibility();
-
-    if (saved.category) el("categorySelect").value = saved.category;
-
-    if (saved.gender) {
-      state.gender = saved.gender;
-      [...el("genderToggle").children].forEach((b) => b.classList.toggle("active", b.dataset.gender === saved.gender));
-    }
-
-    if (saved.mode) {
-      state.branchMode = saved.mode;
-      [...el("branchModeToggle").children].forEach((b) => b.classList.toggle("active", b.dataset.mode === saved.mode));
-    }
-
-    const groupMap = {
-      regions: { set: state.selectedRegions, containerId: "regionChips" },
-      districts: { set: state.selectedDistricts, containerId: "districtChips" },
-      types: { set: state.selectedTypes, containerId: "typeChips" },
-    };
-    const savedGroups = { regions: saved.regions, districts: saved.districts, types: saved.types };
-    Object.keys(groupMap).forEach((key) => {
-      const values = savedGroups[key] || [];
-      const { set: setRef, containerId } = groupMap[key];
-      values.forEach((v) => {
-        setRef.add(v);
-        const chip = el(containerId).querySelector(`[data-value="${v}"]`);
-        if (chip) chip.classList.add("active");
-      });
-    });
-
-    if (saved.maxRank) el("maxRank").value = saved.maxRank;
-    if (saved.resultLimit) el("resultLimit").value = saved.resultLimit;
-    (saved.removed || []).forEach((key) => state.removedKeys.add(key));
   }
 
   function renderChipGroup(containerId, values, labels, selectedSet) {
@@ -786,11 +854,9 @@
     el("jumpNav").hidden = true;
     el("srAnnounce").textContent = "";
     history.replaceState(null, "", location.pathname);
-    localStorage.removeItem(FILTERS_KEY);
   }
 
   function startFresh() {
-    localStorage.removeItem(FILTERS_KEY);
     location.href = location.pathname;
   }
 
@@ -824,7 +890,6 @@
     container.innerHTML = "";
 
     updateUrlState(category, maxRankRaw, limitRaw);
-    saveFiltersToStorage(category, maxRankRaw, limitRaw);
 
     const branchOrder = [...state.selectedBranches].sort();
     const useCombined = state.branchMode === "combined" && branchOrder.length > 1;

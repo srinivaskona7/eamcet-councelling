@@ -192,6 +192,54 @@ body.modal-open { overflow: hidden; }
   .layout { padding: 14px; gap: 16px; }
 }
 
+.college-lookup-panel {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 14px 20px;
+  box-shadow: var(--shadow);
+}
+.college-lookup-panel label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--ink);
+}
+.college-lookup-row { position: relative; max-width: 480px; }
+.college-lookup-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  max-height: 340px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+}
+.college-lookup-suggestion {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px dashed var(--rule);
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+.college-lookup-suggestion:last-child { border-bottom: none; }
+.college-lookup-suggestion:hover,
+.college-lookup-suggestion.active { background: var(--brass-soft); }
+.college-lookup-suggestion .code-cell { margin-right: 6px; }
+.college-lookup-suggestion .hint { display: block; margin-top: 1px; }
+.college-lookup-empty { padding: 10px 12px; font-size: 12.5px; color: var(--ink-soft); }
+
 .filters-panel {
   background: var(--panel);
   border: 1px solid var(--rule);
@@ -885,6 +933,11 @@ table.results-table tbody tr.reach-row:hover { background: var(--brass-soft); op
 
 .profile-table { min-width: 0; }
 .no-admit-cell { color: var(--ink-soft); font-style: italic; font-size: 12px; }
+
+.lookup-branch-block { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--rule); }
+.lookup-branch-block:first-of-type { margin-top: 14px; }
+.lookup-branch-block h4 { margin: 0 0 4px; font-size: 14px; font-family: var(--font-sans); color: var(--navy); }
+
 
 /* ---------- Shortlist panel ---------- */
 
