@@ -23,7 +23,13 @@
           <p class="subtitle">Engineering &amp; Pharmacy Counseling Helper</p>
         </div>
       </div>
-      <div id="dataStatus" class="data-status loading">Loading dataset&hellip;</div>
+      <div class="header-actions">
+        <div id="dataStatus" class="data-status loading">Loading dataset&hellip;</div>
+        <button type="button" id="shortlistBtn" class="header-btn" title="Your saved colleges">
+          &#9733; My Shortlist <span id="shortlistCount" class="count-badge">0</span>
+        </button>
+        <button type="button" id="themeToggle" class="header-btn" title="Toggle dark / light theme">&#9788;</button>
+      </div>
     </div>
   </header>
 
@@ -85,6 +91,10 @@
         <div class="field field-grow">
           <div class="field-head">
             <label>College Ownership <span class="hint">(tick one or more)</span></label>
+            <div class="chip-actions">
+              <button type="button" class="link-btn" data-chipgroup="type" data-action="all">All</button>
+              <button type="button" class="link-btn" data-chipgroup="type" data-action="none">None</button>
+            </div>
           </div>
           <div id="typeChips" class="chip-group"></div>
           <details class="info-details">
@@ -100,7 +110,8 @@
               <input id="branchSearch" type="text" placeholder="Search branch e.g. CSE, ECE, Pharmacy..." autocomplete="off" />
               <div id="branchList" class="branch-checklist" role="listbox" aria-multiselectable="true"></div>
               <div class="branch-actions">
-                <button type="button" id="clearBranches" class="link-btn">Clear</button>
+                <button type="button" id="selectAllBranches" class="link-btn">All</button>
+                <button type="button" id="clearBranches" class="link-btn">None</button>
                 <span id="branchCount" class="hint">0 selected</span>
               </div>
             </div>
@@ -147,9 +158,54 @@
   <footer class="site-footer">
     <p>Data source: AP EAPCET 2025 official Last Rank Details (Government of Andhra Pradesh). Built for counseling reference only &mdash; always verify against the official portal before finalizing choices.</p>
     <p id="dataProvenance" class="hint"></p>
+    <div id="dataTrustPanel" class="data-trust-panel"></div>
   </footer>
 
   <div id="srAnnounce" class="sr-only" role="status" aria-live="polite"></div>
+
+  <div id="compareBar" class="compare-bar" hidden>
+    <span><span id="compareCount">0</span> college(s) selected for comparison (up to 4)</span>
+    <div class="compare-bar-actions">
+      <button type="button" id="compareViewBtn" class="primary-btn compare-view-btn" disabled>Compare Now</button>
+      <button type="button" id="compareClearBtn" class="ghost-btn compare-clear-btn">Clear</button>
+    </div>
+  </div>
+
+  <div id="shortlistModal" class="modal-overlay" hidden>
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>&#9733; My Shortlist</h3>
+        <button type="button" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-actions">
+          <button type="button" id="exportShortlistBtn" class="download-btn">Download CSV</button>
+        </div>
+        <p id="shortlistEmpty" class="hint">You haven&rsquo;t starred any colleges yet. Click the &#9734; icon on any result row to save it here for quick reference during counseling.</p>
+        <ul id="shortlistList" class="shortlist-list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <div id="collegeModal" class="modal-overlay" hidden>
+    <div class="modal-box modal-box-wide">
+      <div class="modal-header">
+        <h3>College Details</h3>
+        <button type="button" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="collegeModalBody"></div>
+    </div>
+  </div>
+
+  <div id="compareModal" class="modal-overlay" hidden>
+    <div class="modal-box modal-box-wide">
+      <div class="modal-header">
+        <h3>Compare Colleges</h3>
+        <button type="button" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="compareModalBody"></div>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script src="assets/js/app.js"></script>
