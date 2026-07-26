@@ -30,6 +30,8 @@
     shortlist: new Map(),
     lastMaxRank: null,
     compareRows: new Map(),
+    removedKeys: new Set(),
+    lastSearchParams: null,
   };
 
   const el = (id) => document.getElementById(id);
@@ -39,6 +41,20 @@
 
   function shortlistKey(r, categoryKey) {
     return `${r.instCode}|${r.branch}|${r.localArea}|${categoryKey}`;
+  }
+
+  // Category-agnostic identity used for "Edit List" row removal, so a college
+  // removed from the list stays removed regardless of which caste category
+  // it's being viewed under — this is what makes removals survive a shared link.
+  function rowIdentityKey(r) {
+    return `${r.instCode}|${r.branch}|${r.localArea}`;
+  }
+
+  function persistCurrentSearchState() {
+    if (!state.lastSearchParams) return;
+    const { category, maxRankRaw, limitRaw } = state.lastSearchParams;
+    updateUrlState(category, maxRankRaw, limitRaw);
+    saveFiltersToStorage(category, maxRankRaw, limitRaw);
   }
 
   function loadShortlist() {
@@ -76,7 +92,7 @@
 
   const FILTERS_KEY = "apeapcet2025_last_filters";
 
-  function saveFiltersToStorage(category, maxRankRaw) {
+  function saveFiltersToStorage(category, maxRankRaw, resultLimit) {
     try {
       localStorage.setItem(FILTERS_KEY, JSON.stringify({
         branches: [...state.selectedBranches],
@@ -87,6 +103,8 @@
         gender: state.gender,
         mode: state.branchMode,
         maxRank: maxRankRaw || "",
+        resultLimit: resultLimit || "25",
+        removed: [...state.removedKeys],
       }));
     } catch (err) {
       console.warn("Could not save filters", err);
@@ -122,7 +140,7 @@
         category,
         categoryKey,
         categoryLabel: meta.category_labels[categoryKey] || categoryKey,
-        rank: typeof r[categoryKey] === "number" ? r[categoryKey] : null,
+        rank: resolveRank(r, categoryKey).value,
       });
     }
     saveShortlist();
@@ -345,14 +363,16 @@
 
   function tableToCsv(rows, categoryKey, categoryLabel, showBranch) {
     const meta = state.data.meta;
-    const header = ["#", "College Code", "College Name", ...(showBranch ? ["Branch"] : []), "Type", "District", "Zone", `${categoryLabel} Cutoff Rank`];
+    const header = ["#", "College Code", "College Name", ...(showBranch ? ["Branch"] : []), "Type", "District", "Zone", `${categoryLabel} Cutoff Rank`, "Rank Source"];
     const lines = [header.join(",")];
     rows.forEach((r, idx) => {
+      const resolved = resolveRank(r, categoryKey);
       const line = [
         idx + 1, r.instCode, r.instName,
         ...(showBranch ? [`${r.branch} ${meta.branch_labels[r.branch] || ""}`] : []),
         r.type, DISTRICT_LABELS[r.district] || r.district, zoneDisplay(r).replace("&middot;", "-"),
-        r[categoryKey],
+        resolved.value,
+        resolved.isFallback ? `${fallbackSourceLabel(resolved)} fallback (no seats recorded in selected category)` : "Direct",
       ].map(csvCell);
       lines.push(line.join(","));
     });
@@ -580,6 +600,8 @@
     });
 
     if (saved.maxRank) el("maxRank").value = saved.maxRank;
+    if (saved.resultLimit) el("resultLimit").value = saved.resultLimit;
+    (saved.removed || []).forEach((key) => state.removedKeys.add(key));
 
     if (saved.branches.length) runSearch();
   }
@@ -698,6 +720,34 @@
       : "";
   }
 
+  // Resolves the effective cutoff rank for a row + category. If the selected
+  // category has zero admissions recorded, falls back through the same-gender
+  // OC (Open Category) cutoff, then through the BC sub-categories (A→E) in
+  // turn — so a college isn't dropped just because a smaller reservation
+  // category had no seats filled at it, while still preferring the closest
+  // reservation-tier proxy (OC) before broader BC substitutes.
+  const FALLBACK_CHAIN = ["OC", "BCA", "BCB", "BCC", "BCD", "BCE"];
+  function resolveRank(r, categoryKey) {
+    const direct = r[categoryKey];
+    if (typeof direct === "number") return { value: direct, isFallback: false, fallbackKey: null };
+    const gender = categoryKey.endsWith("_G") ? "G" : "B";
+    const category = categoryKey.replace(/_[BG]$/, "");
+    for (const fallbackCategory of FALLBACK_CHAIN) {
+      if (fallbackCategory === category) continue;
+      const fallbackKey = `${fallbackCategory}_${gender}`;
+      const value = r[fallbackKey];
+      if (typeof value === "number") return { value, isFallback: true, fallbackKey };
+    }
+    return { value: null, isFallback: false, fallbackKey: null };
+  }
+
+  function fallbackSourceLabel(resolved) {
+    if (!resolved.isFallback || !resolved.fallbackKey) return "";
+    const meta = state.data.meta;
+    const category = resolved.fallbackKey.replace(/_[BG]$/, "");
+    return meta.category_labels[resolved.fallbackKey] || category;
+  }
+
   function passesFilters(r, branchCode) {
     if (branchCode && r.branch !== branchCode) return false;
     if (!branchCode && !state.selectedBranches.has(r.branch)) return false;
@@ -715,6 +765,8 @@
     state.selectedTypes.clear();
     state.gender = "B";
     state.branchMode = "separate";
+    state.removedKeys.clear();
+    state.lastSearchParams = null;
 
     el("categorySelect").value = "OC";
     [...el("genderToggle").children].forEach((b) => b.classList.toggle("active", b.dataset.gender === "B"));
@@ -726,6 +778,7 @@
     updateBranchCount();
     updateBranchModeVisibility();
     el("maxRank").value = "";
+    el("resultLimit").value = "25";
     el("filterError").hidden = true;
 
     el("resultsContainer").innerHTML = "";
@@ -755,14 +808,18 @@
       errorEl.hidden = false;
       return;
     }
-    const rows = state.data.rows;
+    const limitRaw = el("resultLimit").value;
+    const resultLimit = limitRaw === "all" ? null : parseInt(limitRaw, 10);
+    const rows = state.data.rows.filter((r) => !state.removedKeys.has(rowIdentityKey(r)));
+
+    state.lastSearchParams = { category, maxRankRaw, limitRaw };
 
     el("emptyState").style.display = "none";
     const container = el("resultsContainer");
     container.innerHTML = "";
 
-    updateUrlState(category, maxRankRaw);
-    saveFiltersToStorage(category, maxRankRaw);
+    updateUrlState(category, maxRankRaw, limitRaw);
+    saveFiltersToStorage(category, maxRankRaw, limitRaw);
 
     const branchOrder = [...state.selectedBranches].sort();
     const useCombined = state.branchMode === "combined" && branchOrder.length > 1;
@@ -772,41 +829,44 @@
     const sectionMetas = [];
 
     function collectBest(ranked) {
-      if (ranked.length) bestOverall = bestOverall == null ? ranked[0][categoryKey] : Math.min(bestOverall, ranked[0][categoryKey]);
+      if (ranked.length) {
+        const best = resolveRank(ranked[0], categoryKey).value;
+        bestOverall = bestOverall == null ? best : Math.min(bestOverall, best);
+      }
+    }
+
+    function rankAndSplit(filtered) {
+      const rankedAll = filtered
+        .filter((r) => resolveRank(r, categoryKey).value != null)
+        .sort((a, b) => resolveRank(a, categoryKey).value - resolveRank(b, categoryKey).value || a.instName.localeCompare(b.instName));
+      const withinRank = maxRank ? rankedAll.filter((r) => resolveRank(r, categoryKey).value <= maxRank) : rankedAll;
+      const suggestions = maxRank ? rankedAll.filter((r) => resolveRank(r, categoryKey).value > maxRank).slice(0, 5) : [];
+      const truncatedCount = resultLimit != null && withinRank.length > resultLimit ? withinRank.length - resultLimit : 0;
+      const ranked = resultLimit != null ? withinRank.slice(0, resultLimit) : withinRank;
+      const unranked = filtered
+        .filter((r) => resolveRank(r, categoryKey).value == null)
+        .sort((a, b) => a.instName.localeCompare(b.instName));
+      return { rankedAll, ranked, suggestions, unranked, truncatedCount };
     }
 
     if (useCombined) {
       const filtered = rows.filter((r) => passesFilters(r, null));
-      const rankedAll = filtered
-        .filter((r) => typeof r[categoryKey] === "number")
-        .sort((a, b) => a[categoryKey] - b[categoryKey] || a.instName.localeCompare(b.instName));
-      const ranked = maxRank ? rankedAll.filter((r) => r[categoryKey] <= maxRank) : rankedAll;
-      const suggestions = maxRank ? rankedAll.filter((r) => r[categoryKey] > maxRank).slice(0, 5) : [];
-      const unranked = filtered
-        .filter((r) => typeof r[categoryKey] !== "number")
-        .sort((a, b) => a.instName.localeCompare(b.instName));
+      const { rankedAll, ranked, suggestions, unranked, truncatedCount } = rankAndSplit(filtered);
 
       const bestPerBranch = branchOrder
         .map((code) => rankedAll.find((r) => r.branch === code))
         .filter(Boolean);
 
-      const section = renderCombinedSection(branchOrder, category, state.gender, ranked, unranked, suggestions, categoryKey, bestPerBranch);
+      const section = renderCombinedSection(branchOrder, category, state.gender, ranked, unranked, suggestions, categoryKey, bestPerBranch, truncatedCount);
       container.appendChild(section);
       totalRanked += ranked.length;
       collectBest(ranked);
     } else {
       branchOrder.forEach((branchCode) => {
         const filtered = rows.filter((r) => passesFilters(r, branchCode));
-        const rankedAll = filtered
-          .filter((r) => typeof r[categoryKey] === "number")
-          .sort((a, b) => a[categoryKey] - b[categoryKey] || a.instName.localeCompare(b.instName));
-        const ranked = maxRank ? rankedAll.filter((r) => r[categoryKey] <= maxRank) : rankedAll;
-        const suggestions = maxRank ? rankedAll.filter((r) => r[categoryKey] > maxRank).slice(0, 5) : [];
-        const unranked = filtered
-          .filter((r) => typeof r[categoryKey] !== "number")
-          .sort((a, b) => a.instName.localeCompare(b.instName));
+        const { ranked, suggestions, unranked, truncatedCount } = rankAndSplit(filtered);
 
-        const section = renderBranchSection(branchCode, category, state.gender, ranked, unranked, suggestions, categoryKey);
+        const section = renderBranchSection(branchCode, category, state.gender, ranked, unranked, suggestions, categoryKey, truncatedCount);
         container.appendChild(section);
         totalRanked += ranked.length;
         collectBest(ranked);
@@ -825,7 +885,7 @@
     });
   }
 
-  function renderBranchSection(branchCode, category, gender, ranked, unranked, suggestions, categoryKey) {
+  function renderBranchSection(branchCode, category, gender, ranked, unranked, suggestions, categoryKey, truncatedCount) {
     const meta = state.data.meta;
     const branchLabel = meta.branch_labels[branchCode] || branchCode;
     const categoryLabel = meta.category_labels[categoryKey] || categoryKey;
@@ -875,10 +935,17 @@
 
     section.appendChild(snapshotWrap);
 
+    if (truncatedCount > 0) {
+      const notice = document.createElement("p");
+      notice.className = "hint truncated-notice";
+      notice.textContent = `Showing top ${ranked.length} of ${ranked.length + truncatedCount} matching colleges — increase "Show top" to see more.`;
+      section.appendChild(notice);
+    }
+
     if (unranked.length > 0) {
       const toggle = document.createElement("div");
       toggle.className = "unranked-toggle";
-      toggle.textContent = `Show ${unranked.length} college(s) with no allotment recorded in this category ▾`;
+      toggle.textContent = `Show ${unranked.length} college(s) with no allotment recorded in this category (OC & BC-A/B/C/D/E also checked) ▾`;
       const list = document.createElement("ul");
       list.className = "unranked-list";
       list.hidden = true;
@@ -911,7 +978,7 @@
     return section;
   }
 
-  function renderCombinedSection(branchCodes, category, gender, ranked, unranked, suggestions, categoryKey, bestPerBranch) {
+  function renderCombinedSection(branchCodes, category, gender, ranked, unranked, suggestions, categoryKey, bestPerBranch, truncatedCount) {
     const meta = state.data.meta;
     const categoryLabel = meta.category_labels[categoryKey] || categoryKey;
     const branchLabelList = branchCodes.map((c) => `${c} (${meta.branch_labels[c] || c})`).join(", ");
@@ -950,14 +1017,18 @@
       leaderboard.innerHTML = `
         <div class="best-per-branch-title">Best college per branch &mdash; ${escapeHtml(categoryLabel)} (${genderLabel})</div>
         <div class="best-per-branch-grid">
-          ${bestPerBranch.map((r) => `
+          ${bestPerBranch.map((r) => {
+            const resolved = resolveRank(r, categoryKey);
+            const fbLabel = fallbackSourceLabel(resolved);
+            return `
             <div class="best-per-branch-card">
               <div class="bpb-branch">${escapeHtml(r.branch)} &middot; ${escapeHtml(meta.branch_labels[r.branch] || "")}</div>
               <div class="bpb-college">${escapeHtml(r.instName)}${womenBadge(r.instName)}</div>
               <div class="bpb-meta">${escapeHtml(r.instCode)} &middot; ${escapeHtml(DISTRICT_LABELS[r.district] || r.district)} &middot; ${escapeHtml(TYPE_LABELS[r.type] || r.type)}</div>
-              <div class="bpb-rank">Cutoff rank: <strong>${r[categoryKey]}</strong></div>
+              <div class="bpb-rank">Cutoff rank: <strong>${resolved.value}</strong>${resolved.isFallback ? ` <span class="oc-fallback-badge" title="No seats recorded in the selected category — showing the ${escapeHtml(fbLabel)} cutoff instead">${escapeHtml(fbLabel)} fallback</span>` : ""}</div>
             </div>
-          `).join("")}
+          `;
+          }).join("")}
         </div>
         ${branchCodes.length > bestPerBranch.length ? `<p class="hint">${branchCodes.length - bestPerBranch.length} branch(es) have no admission recorded in this category/gender under the current filters.</p>` : ""}
       `;
@@ -981,10 +1052,17 @@
     }
     section.appendChild(snapshotWrap);
 
+    if (truncatedCount > 0) {
+      const notice = document.createElement("p");
+      notice.className = "hint truncated-notice";
+      notice.textContent = `Showing top ${ranked.length} of ${ranked.length + truncatedCount} matching colleges — increase "Show top" to see more.`;
+      section.appendChild(notice);
+    }
+
     if (unranked.length > 0) {
       const toggle = document.createElement("div");
       toggle.className = "unranked-toggle";
-      toggle.textContent = `Show ${unranked.length} college(s) with no allotment recorded in this category ▾`;
+      toggle.textContent = `Show ${unranked.length} college(s) with no allotment recorded in this category (OC & BC-A/B/C/D/E also checked) ▾`;
       const list = document.createElement("ul");
       list.className = "unranked-list";
       list.hidden = true;
@@ -1093,6 +1171,8 @@
         const tr = document.createElement("tr");
         if (isCanonical && rowRank === 1) tr.classList.add("top-pick");
         const medalClass = !isCanonical ? "" : rowRank === 1 ? " medal" : rowRank === 2 ? " medal-silver" : rowRank === 3 ? " medal-bronze" : "";
+        const resolved = resolveRank(r, categoryKey);
+        const fbLabel = fallbackSourceLabel(resolved);
         tr.innerHTML = `
           <td class="delete-col"><button type="button" class="row-delete-btn" title="Remove this college from the list">&times;</button></td>
           ${rowActionCells(r)}
@@ -1102,11 +1182,13 @@
           ${showBranch ? `<td><span class="type-pill">${escapeHtml(r.branch)} &middot; ${escapeHtml(branchLabels[r.branch] || "")}</span></td>` : ""}
           <td><span class="type-pill">${r.type}</span></td>
           <td>${escapeHtml(DISTRICT_LABELS[r.district] || r.district)} &middot; ${zoneDisplay(r)}</td>
-          <td class="rank-cell">${r[categoryKey]}</td>
+          <td class="rank-cell">${resolved.value}${resolved.isFallback ? ` <span class="oc-fallback-badge" title="No seats recorded in this category — showing the ${escapeHtml(fbLabel)} cutoff instead">${escapeHtml(fbLabel)}</span>` : ""}</td>
         `;
         tr.querySelector(".row-delete-btn").addEventListener("click", () => {
           const pos = rows.indexOf(r);
           if (pos > -1) rows.splice(pos, 1);
+          state.removedKeys.add(rowIdentityKey(r));
+          persistCurrentSearchState();
           render();
           refreshSummaryBar();
         });
@@ -1117,6 +1199,8 @@
         const rowRank = rows.length + idx + 1;
         const tr = document.createElement("tr");
         tr.classList.add("reach-row");
+        const resolved = resolveRank(r, categoryKey);
+        const fbLabel = fallbackSourceLabel(resolved);
         tr.innerHTML = `
           <td class="delete-col"></td>
           ${rowActionCells(r)}
@@ -1126,7 +1210,7 @@
           ${showBranch ? `<td><span class="type-pill">${escapeHtml(r.branch)} &middot; ${escapeHtml(branchLabels[r.branch] || "")}</span></td>` : ""}
           <td><span class="type-pill">${r.type}</span></td>
           <td>${escapeHtml(DISTRICT_LABELS[r.district] || r.district)} &middot; ${zoneDisplay(r)}</td>
-          <td class="rank-cell">${r[categoryKey]}</td>
+          <td class="rank-cell">${resolved.value}${resolved.isFallback ? ` <span class="oc-fallback-badge" title="No seats recorded in this category — showing the ${escapeHtml(fbLabel)} cutoff instead">${escapeHtml(fbLabel)}</span>` : ""}</td>
         `;
         wireRowActions(tr, r);
         tbody.appendChild(tr);
@@ -1143,7 +1227,7 @@
           rows.sort((a, b) => {
             const cmp = currentKey === "college"
               ? a.instName.localeCompare(b.instName)
-              : a[categoryKey] - b[categoryKey];
+              : resolveRank(a, categoryKey).value - resolveRank(b, categoryKey).value;
             return currentDir === "asc" ? cmp : -cmp;
           });
           render();
@@ -1186,7 +1270,7 @@
     });
   }
 
-  function updateUrlState(category, maxRankRaw) {
+  function updateUrlState(category, maxRankRaw, resultLimit) {
     const params = new URLSearchParams();
     params.set("branches", [...state.selectedBranches].sort().join(","));
     params.set("category", category);
@@ -1196,6 +1280,8 @@
     if (state.selectedDistricts.size) params.set("districts", [...state.selectedDistricts].join(","));
     if (state.selectedTypes.size) params.set("types", [...state.selectedTypes].join(","));
     if (maxRankRaw) params.set("maxRank", maxRankRaw);
+    if (resultLimit && resultLimit !== "25") params.set("limit", resultLimit);
+    if (state.removedKeys.size) params.set("removed", [...state.removedKeys].join(";"));
     history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
   }
 
@@ -1248,6 +1334,12 @@
 
     const maxRank = params.get("maxRank");
     if (maxRank) el("maxRank").value = maxRank;
+
+    const limit = params.get("limit");
+    if (limit) el("resultLimit").value = limit;
+
+    const removed = (params.get("removed") || "").split(";").filter(Boolean);
+    removed.forEach((key) => state.removedKeys.add(key));
 
     return branches.length > 0;
   }

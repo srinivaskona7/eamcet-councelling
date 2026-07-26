@@ -135,6 +135,24 @@
           <input id="maxRank" type="number" min="1" inputmode="numeric" placeholder="Leave blank for all" />
         </div>
 
+        <div class="field field-compact">
+          <label for="resultLimit">Show top <span class="hint">(per list)</span></label>
+          <select id="resultLimit">
+            <option value="10">10 colleges</option>
+            <option value="15">15 colleges</option>
+            <option value="20">20 colleges</option>
+            <option value="25" selected>25 colleges</option>
+            <option value="30">30 colleges</option>
+            <option value="40">40 colleges</option>
+            <option value="50">50 colleges</option>
+            <option value="75">75 colleges</option>
+            <option value="100">100 colleges</option>
+            <option value="150">150 colleges</option>
+            <option value="200">200 colleges</option>
+            <option value="all">All colleges</option>
+          </select>
+        </div>
+
         <div class="field field-actions">
           <div class="button-row">
             <button id="searchBtn" class="primary-btn">Search Colleges</button>
