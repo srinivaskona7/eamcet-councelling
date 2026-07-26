@@ -721,11 +721,11 @@
 
   // Resolves the effective cutoff rank for a row + category. If the selected
   // category has zero admissions recorded, falls back through the same-gender
-  // OC (Open Category) cutoff, then through the BC sub-categories (A→E) in
-  // turn — so a college isn't dropped just because a smaller reservation
-  // category had no seats filled at it, while still preferring the closest
-  // reservation-tier proxy (OC) before broader BC substitutes.
-  const FALLBACK_CHAIN = ["OC", "BCA", "BCB", "BCC", "BCD", "BCE"];
+  // OC (Open Category) cutoff, then through the BC sub-categories (A→E), then
+  // through SC/ST in turn — so a college isn't dropped just because a smaller
+  // reservation category had no seats filled at it, while still preferring
+  // the closest reservation-tier proxy (OC) before broader substitutes.
+  const FALLBACK_CHAIN = ["OC", "BCA", "BCB", "BCC", "BCD", "BCE", "SC1", "SC2", "SC3", "ST"];
   function resolveRank(r, categoryKey) {
     const direct = r[categoryKey];
     if (typeof direct === "number") return { value: direct, isFallback: false, fallbackKey: null };
@@ -845,7 +845,7 @@
         .filter((r) => resolveRank(r, categoryKey).value != null)
         .sort((a, b) => resolveRank(a, categoryKey).value - resolveRank(b, categoryKey).value || a.instName.localeCompare(b.instName));
       const withinRank = maxRank ? rankedAll.filter((r) => resolveRank(r, categoryKey).value <= maxRank) : rankedAll;
-      const suggestions = maxRank ? rankedAll.filter((r) => resolveRank(r, categoryKey).value > maxRank).slice(0, 5) : [];
+      const suggestions = maxRank ? rankedAll.filter((r) => resolveRank(r, categoryKey).value > maxRank).slice(0, 10) : [];
       const truncatedCount = resultLimit != null && withinRank.length > resultLimit ? withinRank.length - resultLimit : 0;
       const ranked = resultLimit != null ? withinRank.slice(0, resultLimit) : withinRank;
       const unranked = filtered
@@ -950,7 +950,7 @@
     if (unranked.length > 0) {
       const toggle = document.createElement("div");
       toggle.className = "unranked-toggle";
-      toggle.textContent = `Show ${unranked.length} college(s) with no allotment recorded in this category (OC & BC-A/B/C/D/E also checked) ▾`;
+      toggle.textContent = `Show ${unranked.length} college(s) with no allotment recorded in this category (OC, BC-A/B/C/D/E & SC/ST also checked) ▾`;
       const list = document.createElement("ul");
       list.className = "unranked-list";
       list.hidden = true;
@@ -1067,7 +1067,7 @@
     if (unranked.length > 0) {
       const toggle = document.createElement("div");
       toggle.className = "unranked-toggle";
-      toggle.textContent = `Show ${unranked.length} college(s) with no allotment recorded in this category (OC & BC-A/B/C/D/E also checked) ▾`;
+      toggle.textContent = `Show ${unranked.length} college(s) with no allotment recorded in this category (OC, BC-A/B/C/D/E & SC/ST also checked) ▾`;
       const list = document.createElement("ul");
       list.className = "unranked-list";
       list.hidden = true;
